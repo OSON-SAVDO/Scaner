@@ -3,134 +3,129 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Сканери Осон-Савдо</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         body { 
             margin: 0; padding: 0; 
-            font-family: -apple-system, system-ui, sans-serif; 
+            font-family: sans-serif; 
             background: #f0f2f5; 
-            height: 100vh; display: flex; flex-direction: column; 
+            height: 100vh; 
+            display: flex; 
+            flex-direction: column; 
             overflow: hidden;
         }
-        /* 30% боло барои Камера */
+        /* Камераи хурд - 30% экран */
         #reader { 
-            height: 35vh; 
-            background: #000; 
+            width: 100% !important; 
+            height: 30vh !important; 
+            background: #000;
         }
-        /* 70% поён барои Рӯйхат */
+        /* Рӯйхати молҳо - 70% экран */
         #product-list { 
-            height: 65vh; 
+            flex: 1;
             background: white; 
             border-radius: 20px 20px 0 0; 
             padding: 15px; 
             overflow-y: auto; 
             box-shadow: 0 -5px 15px rgba(0,0,0,0.1);
+            margin-top: -10px;
+            z-index: 10;
         }
-        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
         .item { 
             display: flex; justify-content: space-between; align-items: center; 
             padding: 15px; margin-bottom: 10px; 
             background: #fff; border: 1px solid #eee; border-radius: 12px;
-            animation: slideIn 0.3s ease;
         }
-        @keyframes slideIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        
         .controls { display: flex; align-items: center; gap: 15px; }
         .btn-count { 
             width: 35px; height: 35px; border-radius: 10px; border: none; 
             background: #0088cc; color: white; font-size: 20px; font-weight: bold;
         }
         .count-val { font-size: 18px; font-weight: bold; min-width: 25px; text-align: center; }
-        
         .confirm-btn { 
-            position: fixed; bottom: 25px; right: 25px; 
-            width: 70px; height: 70px; 
+            position: fixed; bottom: 20px; right: 20px; 
+            width: 60px; height: 60px; 
             background: #28a745; color: white; border: none; border-radius: 50%; 
-            font-size: 30px; box-shadow: 0 5px 15px rgba(40, 167, 69, 0.4); 
-            display: flex; align-items: center; justify-content: center; z-index: 1000;
+            font-size: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); 
+            display: flex; align-items: center; justify-content: center; z-index: 100;
         }
     </style>
 </head>
 <body>
 
-    <div id="reader"></div>
+<div id="reader"></div>
 
-    <div id="product-list">
-        <div class="header">
-            <h2 style="margin: 0; font-size: 20px; color: #333;">🛒 Сабат</h2>
-            <span id="total-count" style="background: #0088cc; color: white; padding: 4px 10px; border-radius: 20px; font-size: 14px;">0 мол</span>
-        </div>
-        <div id="items-container"></div>
-    </div>
+<div id="product-list">
+    <h3 style="margin-top: 0; font-size: 18px;">🛒 Сабати фурӯш:</h3>
+    <div id="items"></div>
+</div>
 
-    <button class="confirm-btn" onclick="finishSale()">✅</button>
+<button class="confirm-btn" onclick="finishSale()">✅</button>
 
-    <audio id="beep-sound" src="https://www.soundjay.com/buttons/beep-07a.mp3" preload="auto"></audio>
+<script>
+    let tg = window.Telegram.WebApp;
+    tg.expand();
+    let cart = {}; 
 
-    <script>
-        let tg = window.Telegram.WebApp;
-        tg.expand();
-        let cart = {}; 
-
-        const beep = document.getElementById("beep-sound");
-
-        const html5QrCode = new Html5Qrcode("reader");
-        const config = { fps: 20, qrbox: { width: 250, height: 150 } };
-
-        html5QrCode.start({ facingMode: "environment" }, config, (decodedText) => {
-            if (!cart[decodedText]) {
-                // Садо ва вибрация
-                beep.play();
-                if (tg.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
-                
-                cart[decodedText] = 1;
-                renderCart();
-            }
-        });
-
-        function updateCount(code, delta) {
-            cart[code] += delta;
-            if (cart[code] <= 0) delete cart[code];
-            renderCart();
-            if (tg.HapticFeedback) tg.HapticFeedback.impactOccurred('light');
+    const html5QrCode = new Html5Qrcode("reader");
+    
+    // Танзимоти камера барои он ки хурд бошад
+    html5QrCode.start(
+        { facingMode: "environment" }, 
+        { fps: 10, qrbox: { width: 200, height: 120 } }, 
+        (decodedText) => {
+            addItem(decodedText);
         }
+    ).catch(err => {
+        console.error("Хатогии камера:", err);
+    });
 
-        function renderCart() {
-            const container = document.getElementById('items-container');
-            const totalLabel = document.getElementById('total-count');
-            container.innerHTML = '';
-            
-            let totalItems = 0;
-            for (const [code, count] of Object.entries(cart)) {
-                totalItems += count;
-                const div = document.createElement('div');
-                div.className = 'item';
-                div.innerHTML = `
-                    <div style="flex-grow: 1;">
-                        <div style="font-weight: bold; color: #333;">Код: ${code}</div>
-                        <div style="font-size: 12px; color: #888;">Скан шуд</div>
-                    </div>
-                    <div class="controls">
-                        <button class="btn-count" onclick="updateCount('${code}', -1)">−</button>
-                        <span class="count-val">${count}</span>
-                        <button class="btn-count" onclick="updateCount('${code}', 1)">+</button>
-                    </div>`;
-                container.prepend(div);
-            }
-            totalLabel.innerText = `${totalItems} мол`;
+    function addItem(code) {
+        // Агар мол аллакай бошад, танҳо миқдорашро зиёд мекунем
+        if (cart[code]) {
+            cart[code] += 1;
+        } else {
+            cart[code] = 1;
+            if (tg.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
         }
+        renderCart();
+    }
 
-        function finishSale() {
-            if (Object.keys(cart).length === 0) {
-                tg.showAlert("Сабат холӣ аст! Аввал ягон молро скан кунед.");
-                return;
-            }
-            // Фиристодани маълумот ба бот
-            tg.sendData(JSON.stringify(cart));
-            tg.close();
+    function updateCount(code, delta) {
+        cart[code] += delta;
+        if (cart[code] <= 0) delete cart[code];
+        renderCart();
+    }
+
+    function renderCart() {
+        const container = document.getElementById('items');
+        container.innerHTML = '';
+        
+        // Нишон додани молҳо (молҳои нав дар боло)
+        for (const [code, count] of Object.entries(cart)) {
+            const div = document.createElement('div');
+            div.className = 'item';
+            div.innerHTML = `
+                <div>
+                    <div style="font-weight: bold;">📦 Код: ${code}</div>
+                </div>
+                <div class="controls">
+                    <button class="btn-count" onclick="updateCount('${code}', -1)">−</button>
+                    <span class="count-val">${count}</span>
+                    <button class="btn-count" onclick="updateCount('${code}', 1)">+</button>
+                </div>
+            `;
+            container.prepend(div);
         }
-    </script>
+    }
+
+    function finishSale() {
+        if (Object.keys(cart).length === 0) return;
+        tg.sendData(JSON.stringify(cart));
+        tg.close();
+    }
+</script>
+
 </body>
 </html>

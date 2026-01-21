@@ -1,46 +1,140 @@
 <!DOCTYPE html>
-<html>
+<html lang="tg">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Сканери Осон-Савдо</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <script src="https://unpkg.com/@zxing/library@latest"></script>
+    <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
-        body { font-family: sans-serif; text-align: center; margin: 20px; }
-        video { width: 100%; max-width: 400px; border-radius: 10px; }
-        .item { background: #f0f0f0; padding: 10px; margin: 5px; border-radius: 5px; }
-        button { padding: 15px; background: #28a745; color: white; border: none; width: 100%; font-size: 18px; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            text-align: center;
+            margin: 0;
+            padding: 10px;
+            background-color: #f4f4f9;
+            color: #333;
+        }
+        #reader {
+            width: 100%;
+            max-width: 400px;
+            margin: 0 auto;
+            border-radius: 15px;
+            overflow: hidden;
+            border: 2px solid #0088cc;
+            background: #000;
+        }
+        .cart-container {
+            margin-top: 20px;
+            text-align: left;
+            background: white;
+            border-radius: 15px;
+            padding: 15px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        }
+        .item {
+            display: flex;
+            justify-content: space-between;
+            padding: 10px 0;
+            border-bottom: 1px solid #eee;
+        }
+        .item:last-child { border-bottom: none; }
+        .barcode-text { font-weight: bold; color: #0088cc; }
+        .qty-text { background: #e1f5fe; padding: 2px 8px; border-radius: 10px; font-size: 14px; }
+        button {
+            margin-top: 20px;
+            padding: 15px;
+            background: #28a745;
+            color: white;
+            border: none;
+            width: 100%;
+            font-size: 18px;
+            font-weight: bold;
+            border-radius: 12px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(40, 167, 69, 0.3);
+        }
+        button:active { transform: scale(0.98); }
+        #status-msg { color: #666; margin-top: 10px; font-size: 14px; }
     </style>
 </head>
 <body>
+
     <h3>📷 Сканери Фурӯш</h3>
-    <video id="video"></video>
-    <div id="cart"></div>
-    <button onclick="sendData()">✅ Анҷоми Фурӯш</button>
+    <div id="reader"></div>
+    <div id="status-msg">Камераро ба штрихкод наздик кунед</div>
+
+    <div class="cart-container">
+        <h4 style="margin-top: 0;">🛒 Сабади фурӯш:</h4>
+        <div id="cart-list">
+            <p style="color: #999; text-align: center;">Сабад холӣ аст</p>
+        </div>
+    </div>
+
+    <button id="send-btn" onclick="sendDataToBot()">✅ Анҷоми Фурӯш</button>
 
     <script>
         let tg = window.Telegram.WebApp;
+        tg.expand(); // Кушодани экран ба пуррагӣ
+        
         let cart = {};
-        const codeReader = new ZXing.BrowserMultiFormatReader();
+        const html5QrCode = new Html5Qrcode("reader");
 
-        codeReader.decodeFromVideoDevice(null, 'video', (result, err) => {
-            if (result) {
-                let bc = result.text;
-                cart[bc] = (cart[bc] || 0) + 1;
-                renderCart();
-                // Вибрация ҳангоми скан
-                tg.HapticFeedback.notificationOccurred('success');
+        // Танзимоти сканер
+        const config = { fps: 10, qrbox: { width: 250, height: 150 } };
+
+        // Оғози кор бо камера
+        html5QrCode.start(
+            { facingMode: "environment" }, 
+            config,
+            (decodedText) => {
+                // Вақте штрихкод ёфт шуд
+                onScanSuccess(decodedText);
+            },
+            (errorMessage) => {
+                // Хатогиҳои муқаррарии ҷустуҷӯ (фиристодан лозим нест)
             }
+        ).catch((err) => {
+            document.getElementById('status-msg').style.color = 'red';
+            document.getElementById('status-msg').innerText = "Хатогии камера: " + err;
         });
 
-        function renderCart() {
-            let html = "";
-            for (let bc in cart) {
-                html += `<div class="item">Штрихкод: ${bc} | Миқдор: ${cart[bc]}</div>`;
+        function onScanSuccess(barcode) {
+            if (!cart[barcode]) {
+                cart[barcode] = 1;
+                tg.HapticFeedback.notificationOccurred('success'); // Вибрация
+            } else {
+                cart[barcode] += 1;
             }
-            document.getElementById('cart').innerHTML = html;
+            renderCart();
         }
 
-        function sendData() {
-            if (Object.keys(cart).length === 0) return alert("Сабад холӣ аст!");
+        function renderCart() {
+            const list = document.getElementById('cart-list');
+            if (Object.keys(cart).length === 0) {
+                list.innerHTML = '<p style="color: #999; text-align: center;">Сабад холӣ аст</p>';
+                return;
+            }
+
+            let html = "";
+            for (let bc in cart) {
+                html += `
+                    <div class="item">
+                        <span class="barcode-text">🆔 ${bc}</span>
+                        <span class="qty-text">x${cart[bc]} дона</span>
+                    </div>
+                `;
+            }
+            list.innerHTML = html;
+        }
+
+        function sendDataToBot() {
+            if (Object.keys(cart).length === 0) {
+                tg.showAlert("Лутфан камаш як молро сканер кунед!");
+                return;
+            }
+            
+            // Фиристодани маълумот ба бот
             tg.sendData(JSON.stringify(cart));
             tg.close();
         }

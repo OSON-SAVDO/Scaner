@@ -1,62 +1,98 @@
-import telebot
-from telebot import types
-import sqlite3
+<!DOCTYPE html>
+<html lang="tg">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <style>
+        body { margin: 0; display: flex; flex-direction: column; height: 100vh; font-family: sans-serif; background: #eee; }
+        /* 30% боло барои камера */
+        #reader { height: 35vh; background: black; }
+        /* 70% поён барои рӯйхати молҳо */
+        #product-list { 
+            height: 65vh; 
+            overflow-y: auto; 
+            padding: 15px; 
+            background: #ffffff; 
+            border-top-left-radius: 20px; 
+            border-top-right-radius: 20px; 
+            box-shadow: 0 -5px 15px rgba(0,0,0,0.1);
+        }
+        .item { 
+            background: #f8f9fa; 
+            padding: 12px; 
+            margin-bottom: 10px; 
+            border-radius: 10px; 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center;
+            border-left: 5px solid #0088cc;
+        }
+        /* Тугмаи тасдиқ дар кунҷ */
+        .confirm-btn { 
+            position: fixed; 
+            bottom: 25px; 
+            right: 25px; 
+            width: 70px; 
+            height: 70px; 
+            background: #28a745; 
+            color: white; 
+            border: none; 
+            border-radius: 50%; 
+            font-size: 30px; 
+            box-shadow: 0 4px 15px rgba(0,0,0,0.4); 
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div id="reader"></div>
+    <div id="product-list">
+        <h3 style="margin-top: 0;">📦 Сабати фурӯш:</h3>
+        <div id="items"></div>
+    </div>
+    <div class="confirm-btn" onclick="finishSale()">✅</div>
 
-# ТОКЕНИ ХУДРО ИНҶО ГУЗОРЕД
-TOKEN = '7888882227:AAESOj6D5oaWKHykmOiJpC0kGpeImJMIRC4'
-bot = telebot.TeleBot(TOKEN)
+    <script>
+        let tg = window.Telegram.WebApp;
+        tg.expand(); // Кушодани экран ба пуррагӣ
+        let scannedItems = [];
 
-# --- БАЗАИ МАЪЛУМОТ ---
-def init_db():
-    conn = sqlite3.connect('sklad.db')
-    cursor = conn.cursor()
-    # Ҷадвал барои молҳо
-    cursor.execute('''CREATE TABLE IF NOT EXISTS products 
-                      (barcode TEXT PRIMARY KEY, name TEXT, price REAL)''')
-    # Ҷадвал барои фурӯш
-    cursor.execute('''CREATE TABLE IF NOT EXISTS sales 
-                      (id INTEGER PRIMARY KEY AUTOINCREMENT, info TEXT, total REAL)''')
-    conn.commit()
-    conn.close()
+        // Танзими сканер
+        const html5QrCode = new Html5Qrcode("reader");
+        const config = { fps: 15, qrbox: { width: 250, height: 150 } };
 
-# --- ТУГМАҲО ---
-def main_menu():
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    btn1 = types.KeyboardButton("📷 Сканер (Фурӯш)")
-    btn2 = types.KeyboardButton("📥 Қабули бор (Excel)")
-    btn3 = types.KeyboardButton("📊 Ҳисобот")
-    markup.add(btn1)
-    markup.add(btn2, btn3)
-    return markup
+        html5QrCode.start({ facingMode: "environment" }, config, (decodedText) => {
+            addItem(decodedText);
+            // Вибрация ҳангоми скан (агар телефон дастгирӣ кунад)
+            if (tg.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
+        });
 
-@bot.message_handler(commands=['start'])
-def welcome(message):
-    init_db()
-    bot.send_message(message.chat.id, "Хуш омадед! Интихоб кунед:", reply_markup=main_menu())
+        function addItem(code) {
+            // Пешгирӣ аз скани такрории пай дар пай
+            if(scannedItems[0] === code) return; 
 
-# --- ҚАБУЛИ БОР ---
-@bot.message_handler(func=lambda message: message.text == "📥 Қабули бор (Excel)")
-def ask_excel(message):
-    bot.send_message(message.chat.id, "Лутфан маълумоти молро ба таври зерин фиристед:\nШтрихкод Ном Нарх\n\nМасалан:\n1234567 Орд 50")
+            scannedItems.unshift(code);
+            const container = document.getElementById('items');
+            const div = document.createElement('div');
+            div.className = 'item';
+            div.innerHTML = `<span><b>Код:</b> ${code}</span> <span style="color: #28a745;">+1</span>`;
+            container.prepend(div);
+        }
 
-# Ин ҷо мо қабули маълумоти оддиро месозем (чунки Excel дар телефон душвор аст)
-@bot.message_handler(func=lambda message: len(message.text.split()) == 3)
-def add_product(message):
-    try:
-        data = message.text.split()
-        barcode, name, price = data[0], data[1], float(data[2])
-        
-        conn = sqlite3.connect('sklad.db')
-        cursor = conn.cursor()
-        cursor.execute("INSERT OR REPLACE INTO products VALUES (?, ?, ?)", (barcode, name, price))
-        conn.commit()
-        conn.close()
-        
-        bot.send_message(message.chat.id, f"✅ Мол илова шуд: {name} - {price} сомонӣ")
-    except:
-        bot.send_message(message.chat.id, "❌ Хатогӣ дар формат. Бояд: Код Ном Нарх")
-
-# Захираи кор
-if __name__ == "__main__":
-    print("Бот фаъол аст...")
-    bot.polling(none_stop=True)
+        function finishSale() {
+            if (scannedItems.length === 0) {
+                alert("Лутфан аввал ягон молро скан кунед!");
+                return;
+            }
+            // Фиристодани рӯйхати штрихкодҳо ба бот дар шакли JSON
+            tg.sendData(JSON.stringify(scannedItems));
+            tg.close();
+        }
+    </script>
+</body>
+</html>
